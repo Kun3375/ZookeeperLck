@@ -5,10 +5,7 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -52,6 +49,39 @@ public class ZkUtil {
                 throw new RuntimeException("ZooKeeper connect failed");
             }
         }
+    }
+    
+    /**
+     * 基本的锁排序对多个对象加锁
+     *
+     * @param ids 加锁id
+     */
+    public static void locksAcquire(String... ids) {
+        if (ids.length == 0) {
+            throw new RuntimeException("have no id to lock ...");
+        }
+        Arrays.stream(ids)
+                .distinct()
+                .filter(Objects::nonNull)
+                .sorted()
+                .forEach(ZkUtil::lockAcquire);
+    }
+    
+    /**
+     * 对基本的锁排序加锁对象进行解锁，{@link ZkUtil#locksAcquire(String...)}
+     * 不能对自行实现的排序加锁方案进行解锁
+     *
+     * @param ids 加锁id
+     */
+    public static void locksRelease(String... ids) {
+        if (ids.length == 0) {
+            throw new RuntimeException("have no id to release ...");
+        }
+        Arrays.stream(ids)
+                .distinct()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.reverseOrder())
+                .forEach(ZkUtil::lockRelease);
     }
     
     /**
@@ -177,9 +207,14 @@ public class ZkUtil {
             String nodePathName = PATH_PREFIX + id + "/" + lockMap.remove(id);
             keeper.delete(nodePathName, -1);
             log.debug("node {} deleted, lock release", nodePathName);
+            // 这样做会使得线程每次上锁都会创建新的MAP，
+            // 但是不使用remove方法，在web环境下（SpringBoot无所谓吧）会导致内存泄漏或伪内存泄漏
+            // 尽管tomcat有预防此类问题的自动防御机制，但是为了保证代码的通用性和风格，退化threadLocal
             if (lockMap.isEmpty()) {
                 threadLocal.remove();
             }
+            // 删除遗留的节点，大部分情况下会出现异常（无影响）
+            // 原则上本应该避免，但是我们仍旧需要清理多余的节点
             keeper.delete(PATH_PREFIX + id, -1);
         } catch (InterruptedException | KeeperException e) {
             log.debug(e.getMessage());
