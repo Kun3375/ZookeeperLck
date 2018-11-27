@@ -127,13 +127,13 @@ public class ZkUtil {
             log.debug("create node {}", nodePath);
             
             String nodePathName = nodePath.substring((PATH_PREFIX + id).length() + 1);
-            // 上锁过程
-            lock(id, nodePathName, timeout, 0);
             // 便于解锁，使用MAP因为一个线程可能使用多个锁
             threadLocal.get().put(id, nodePathName);
+            // 上锁过程
+            lock(id, nodePathName, timeout, 0);
         } catch (Exception e) {
             log.warn("lock failed...", e);
-            throw new RuntimeException("lock failed");
+            throw new RuntimeException("lock failed", e);
         }
     }
     
@@ -186,12 +186,11 @@ public class ZkUtil {
             throw new RuntimeException("lock failed");
         } catch (KeeperException | InterruptedException e) {
             // 可能在监视前一节点时失败
-            log.debug("watch failed, will try again...", e);
-            e.printStackTrace();
+            log.debug("watch failed, will try again...");
             if (++failCount <= RETRY_TIMES_FOR_MONITOR) {
                 return lock(id, nodePathName, timeout, failCount);
             }
-            throw new RuntimeException("watch failed, will not tray any more");
+            throw new RuntimeException("watch failed, will not tray any more", e);
         }
         
     }
