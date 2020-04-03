@@ -119,13 +119,20 @@ public class ZkUtil {
                 }
             }
             // 创建临时顺序节点
-            String nodePath = keeper.create(
-                    PATH_PREFIX + id + PATH_SUFFIX,
-                    "".getBytes(),
-                    ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                    CreateMode.EPHEMERAL_SEQUENTIAL);
-            log.debug("create node {}", nodePath);
-            
+            String nodePath;
+            try {
+                nodePath = keeper.create(
+                        PATH_PREFIX + id + PATH_SUFFIX,
+                        "".getBytes(),
+                        ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                        CreateMode.EPHEMERAL_SEQUENTIAL);
+                log.debug("create node {}", nodePath);
+            } catch (KeeperException e) {
+                // 父节点删除情况 尝试重建
+                lockAcquire(id, timeout);
+                return;
+            }
+
             String nodePathName = nodePath.substring((PATH_PREFIX + id).length() + 1);
             // 便于解锁，使用MAP因为一个线程可能使用多个锁
             threadLocal.get().put(id, nodePathName);
